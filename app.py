@@ -414,7 +414,7 @@ def extract_powerbi_data(fecha_objetivo):
         driver.quit()
 
 def comparar_valores(valor_excel, valor_power_bi, pasos_excel, pasos_power_bi):
-    """Compara los valores y determina si coinciden"""
+    """Compara los valores y determina si coinciden - EXACTO SIN TOLERANCIA"""
     try:
         if valor_power_bi is None or pasos_power_bi is None:
             return False, False, 0, 0
@@ -422,10 +422,9 @@ def comparar_valores(valor_excel, valor_power_bi, pasos_excel, pasos_power_bi):
         diferencia_valor = abs(valor_excel - valor_power_bi)
         diferencia_pasos = abs(pasos_excel - pasos_power_bi)
         
-        # Tolerancia para valores (1% o $100, lo que sea mayor)
-        tolerancia_valor = max(valor_excel * 0.01, 100)
-        coinciden_valor = diferencia_valor <= tolerancia_valor
-        coinciden_pasos = diferencia_pasos == 0
+        # Comparación EXACTA - Sin tolerancia
+        coinciden_valor = (diferencia_valor == 0)
+        coinciden_pasos = (diferencia_pasos == 0)
         
         return coinciden_valor, coinciden_pasos, diferencia_valor, diferencia_pasos
         
