@@ -127,7 +127,6 @@ def extraer_fecha_desde_excel(uploaded_file):
                                 dia, mes, año = match.groups()
                             
                             fecha = datetime(int(año), int(mes), int(dia))
-                            st.success(f"📅 Fecha encontrada en Excel: {fecha.strftime('%d/%m/%Y')}")
                             return fecha.strftime("%Y-%m-%d")
         
         st.error("❌ No se encontró fecha en el rango G18:N24")
@@ -204,8 +203,6 @@ def click_conciliacion_date(driver, fecha_objetivo):
         # Formatear fecha para búsqueda
         fecha_formateada = f"{fecha_objetivo} 00:00 al {fecha_objetivo} 11:59"
         
-        st.info(f"🔍 Buscando: 'Conciliación Accenorte del {fecha_formateada}'")
-        
         # Esperar a que carguen los elementos
         time.sleep(5)
         
@@ -225,22 +222,19 @@ def click_conciliacion_date(driver, fecha_objetivo):
                 for elemento in elementos:
                     if elemento.is_displayed():
                         texto = elemento.text.strip()
-                        st.info(f"📝 Elemento encontrado: {texto}")
                         if 'ACCENORTE' in texto.upper() and fecha_objetivo in texto:
                             elemento_conciliacion = elemento
-                            st.success(f"✅ Encontrado: {elemento.text.strip()}")
                             break
                 if elemento_conciliacion:
                     break
-            except Exception as e:
-                st.warning(f"⚠️ Selector falló: {selector} - {e}")
+            except:
                 continue
         
         if elemento_conciliacion:
             driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", elemento_conciliacion)
             time.sleep(2)
             driver.execute_script("arguments[0].click();", elemento_conciliacion)
-            time.sleep(5)  # Esperar más tiempo después del clic
+            time.sleep(5)
             return True
         else:
             st.error("❌ No se encontró la conciliación para la fecha especificada")
@@ -255,14 +249,12 @@ def find_accenorte_data(driver):
     FUNCIÓN MEJORADA: Maneja el formato específico con espacios entre caracteres
     """
     try:
-        st.info("🔍 Buscando datos en esquina superior izquierda...")
-        
         valor_a_pagar = None
         cantidad_pasos = None
         
         # ESTRATEGIA 1: Buscar en elementos de la esquina superior izquierda
         try:
-            elementos_esquina = driver.find_elements(By.XPATH, "//*[position() < 20]")  # Primeros elementos
+            elementos_esquina = driver.find_elements(By.XPATH, "//*[position() < 20]")
             
             for elemento in elementos_esquina:
                 if elemento.is_displayed():
@@ -271,13 +263,7 @@ def find_accenorte_data(driver):
                     if location['x'] < 600 and location['y'] < 600:
                         texto_completo = elemento.text.strip()
                         if texto_completo:
-                            st.info(f"📍 Elemento en esquina ({location['x']}, {location['y']}): {texto_completo[:200]}...")
-                            
                             # PROCESAR TEXTO CON ESPACIOS ENTRE CARACTERES
-                            # El texto viene como: "V A L O R   A   P A G A R   A   C O M E R C I O   1 0 2 , 0 3 1 , 6 0 0"
-                            # Necesitamos reconstruir el texto sin espacios
-                            
-                            # Reconstruir texto eliminando espacios entre letras individuales
                             texto_reconstruido = ""
                             palabras = texto_completo.split()
                             
@@ -298,75 +284,62 @@ def find_accenorte_data(driver):
                                     i += 1
                             
                             texto_reconstruido = texto_reconstruido.strip()
-                            st.info(f"🔧 Texto reconstruido: {texto_reconstruido[:200]}...")
                             
                             # BUSCAR VALOR A PAGAR
                             if not valor_a_pagar:
-                                # Patrones para valor
                                 patrones_valor = [
                                     r'VALORAPAGARACOMERCIO[\s\$]*([\d,\.]+)',
                                     r'VALORAPAGAR[\s\$]*([\d,\.]+)',
                                     r'([\d,\.]+)[\s]*VALORAPAGARACOMERCIO',
-                                    r'(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)',  # Formato 102,031,600
-                                    r'(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)'   # Formato 102.031.600
+                                    r'(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)',
+                                    r'(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)'
                                 ]
                                 
                                 for patron in patrones_valor:
                                     match = re.search(patron, texto_reconstruido, re.IGNORECASE)
                                     if match:
                                         valor_texto = match.group(1)
-                                        # Limpiar y convertir
                                         valor_limpio = valor_texto.replace(',', '').replace('.', '')
                                         if valor_limpio.isdigit():
                                             valor_num = int(valor_limpio)
-                                            # Verificar que sea un valor razonable (> 1,000,000)
                                             if valor_num > 1000000:
                                                 valor_a_pagar = valor_num
-                                                st.success(f"💰 VALOR A PAGAR ENCONTRADO: ${valor_a_pagar:,.0f}")
                                                 break
                             
                             # BUSCAR CANTIDAD PASOS
                             if not cantidad_pasos:
-                                # Patrones para pasos
                                 patrones_pasos = [
                                     r'CANTIDADPASOS[\s]*([\d,\.]+)',
                                     r'CANTIDADPASOS[\s]*(\d{1,3}(?:,\d{3})+)',
                                     r'CANTIDADPASOS[\s]*(\d{1,3}(?:\.\d{3})+)',
                                     r'(\d{1,3}(?:,\d{3})+)[\s]*CANTIDADPASOS',
                                     r'(\d{1,3}(?:\.\d{3})+)[\s]*CANTIDADPASOS',
-                                    r'\b(\d{1,3}[,\.]\d{3})\b'  # Formato 6,704 o 6.704
+                                    r'\b(\d{1,3}[,\.]\d{3})\b'
                                 ]
                                 
                                 for patron in patrones_pasos:
                                     match = re.search(patron, texto_reconstruido, re.IGNORECASE)
                                     if match:
                                         pasos_texto = match.group(1)
-                                        # Limpiar y convertir
                                         pasos_limpio = pasos_texto.replace(',', '').replace('.', '')
                                         if pasos_limpio.isdigit():
                                             pasos_num = int(pasos_limpio)
-                                            # Rango típico para pasos (1,000 - 100,000)
                                             if 1000 <= pasos_num <= 100000:
                                                 cantidad_pasos = pasos_num
-                                                st.success(f"👣 CANTIDAD PASOS ENCONTRADA: {cantidad_pasos:,}")
                                                 break
                             
-                            # Si ya encontramos ambos, salir del bucle
                             if valor_a_pagar and cantidad_pasos:
                                 break
         
-        except Exception as e:
-            st.warning(f"⚠️ Estrategia esquina falló: {e}")
+        except:
+            pass
         
         # ESTRATEGIA 2: Búsqueda directa por texto completo de la página
         if not valor_a_pagar or not cantidad_pasos:
             try:
-                st.info("🔍 Realizando búsqueda en texto completo de la página...")
                 page_text = driver.page_source
                 
-                # Buscar patrones específicos en el HTML completo
                 if not valor_a_pagar:
-                    # Buscar valor en el formato: 102,031,600
                     valor_matches = re.findall(r'(\d{1,3}(?:,\d{3}){2,})', page_text)
                     for match in valor_matches:
                         valor_limpio = match.replace(',', '')
@@ -374,11 +347,9 @@ def find_accenorte_data(driver):
                             valor_num = int(valor_limpio)
                             if valor_num > 1000000:
                                 valor_a_pagar = valor_num
-                                st.success(f"💰 VALOR ENCONTRADO en HTML: ${valor_a_pagar:,.0f}")
                                 break
                 
                 if not cantidad_pasos:
-                    # Buscar pasos en el formato: 6,704
                     pasos_matches = re.findall(r'\b(\d{1,3},\d{3})\b', page_text)
                     for match in pasos_matches:
                         pasos_limpio = match.replace(',', '')
@@ -386,25 +357,16 @@ def find_accenorte_data(driver):
                             pasos_num = int(pasos_limpio)
                             if 1000 <= pasos_num <= 100000:
                                 cantidad_pasos = pasos_num
-                                st.success(f"👣 PASOS ENCONTRADOS en HTML: {cantidad_pasos:,}")
                                 break
             
-            except Exception as e:
-                st.warning(f"⚠️ Búsqueda en HTML falló: {e}")
+            except:
+                pass
         
         # RESULTADO FINAL
-        if valor_a_pagar and cantidad_pasos:
-            st.success(f"🎉 EXTRACCIÓN EXITOSA: Valor=${valor_a_pagar:,.0f}, Pasos={cantidad_pasos:,}")
-            return valor_a_pagar, cantidad_pasos
-        elif valor_a_pagar and not cantidad_pasos:
-            st.warning(f"⚠️ EXTRACCIÓN PARCIAL: Valor=${valor_a_pagar:,.0f}, Pasos=No encontrados")
-            return valor_a_pagar, None
-        elif not valor_a_pagar and cantidad_pasos:
-            st.warning(f"⚠️ EXTRACCIÓN PARCIAL: Valor=No encontrado, Pasos={cantidad_pasos:,}")
-            return None, cantidad_pasos
-        else:
+        if not (valor_a_pagar and cantidad_pasos):
             st.error("❌ EXTRACCIÓN FALLIDA: No se encontraron valores")
-            return None, None
+            
+        return valor_a_pagar, cantidad_pasos
             
     except Exception as e:
         st.error(f"❌ Error buscando datos ACCENORTE: {str(e)}")
@@ -427,7 +389,6 @@ def extract_powerbi_data(fecha_objetivo):
         
         # 2. Tomar screenshot inicial
         driver.save_screenshot("powerbi_inicial.png")
-        st.info("📸 Screenshot inicial guardado")
         
         # 3. Hacer clic en la conciliación específica
         if not click_conciliacion_date(driver, fecha_objetivo):
@@ -436,7 +397,6 @@ def extract_powerbi_data(fecha_objetivo):
         # 4. Esperar a que cargue la selección y tomar screenshot
         time.sleep(8)
         driver.save_screenshot("powerbi_despues_seleccion.png")
-        st.info("📸 Screenshot después de selección guardado")
         
         # 5. Buscar datos de ACCENORTE
         with st.spinner("🔍 Extrayendo datos de ACCENORTE..."):
@@ -444,7 +404,6 @@ def extract_powerbi_data(fecha_objetivo):
         
         # 6. Tomar screenshot final
         driver.save_screenshot("powerbi_final.png")
-        st.info("📸 Screenshot final guardado")
         
         return valor_power_bi, pasos_power_bi
         
@@ -527,8 +486,6 @@ def main():
                 st.markdown("---")
                 
                 # EXTRACCIÓN AUTOMÁTICA
-                st.info(f"🤖 **Extracción Automática Activada** - Buscando conciliación del {fecha_validacion}...")
-                
                 with st.spinner("🌐 Extrayendo datos de Power BI..."):
                     valor_power_bi, pasos_power_bi = extract_powerbi_data(fecha_validacion)
                     
