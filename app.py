@@ -252,8 +252,7 @@ def click_conciliacion_date(driver, fecha_objetivo):
 
 def find_accenorte_data(driver):
     """
-    FUNCIÓN MEJORADA: Buscar específicamente en la esquina superior izquierda
-    donde están los valores de VALOR A PAGAR A COMERCIO y CANTIDAD PASOS
+    FUNCIÓN MEJORADA: Maneja el formato específico con espacios entre caracteres
     """
     try:
         st.info("🔍 Buscando datos en esquina superior izquierda...")
@@ -261,53 +260,63 @@ def find_accenorte_data(driver):
         valor_a_pagar = None
         cantidad_pasos = None
         
-        # ESTRATEGIA 1: Buscar los títulos específicos y luego los valores cercanos
-        titulos_buscar = [
-            ("VALOR A PAGAR A COMERCIO", "valor"),
-            ("CANTIDAD PASOS", "pasos")
-        ]
-        
-        for titulo, tipo in titulos_buscar:
-            try:
-                # Buscar el título
-                titulo_element = None
-                selectors = [
-                    f"//*[contains(text(), '{titulo}')]",
-                    f"//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{titulo.lower()}')]"
-                ]
-                
-                for selector in selectors:
-                    try:
-                        elementos = driver.find_elements(By.XPATH, selector)
-                        for elemento in elementos:
-                            if elemento.is_displayed():
-                                titulo_element = elemento
-                                st.success(f"✅ Encontrado título: {titulo}")
-                                break
-                        if titulo_element:
-                            break
-                    except:
-                        continue
-                
-                if titulo_element:
-                    # ESTRATEGIA A: Buscar en el contenedor padre
-                    try:
-                        parent = titulo_element.find_element(By.XPATH, "./..")
-                        parent_text = parent.text
-                        st.info(f"📋 Texto del contenedor padre: {parent_text}")
-                        
-                        if tipo == "valor":
-                            # Buscar valor con formato $102.031.300 o 102,031,300
-                            patrones_valor = [
-                                r'\$?(\d{1,3}(?:\.\d{3})*(?:\.\d{2})?)',
-                                r'\$?(\d{1,3}(?:,\d{3})*(?:,\d{2})?)'
-                            ]
-                            for patron in patrones_valor:
-                                matches = re.findall(patron, parent_text)
-                                for match in matches:
+        # ESTRATEGIA 1: Buscar en elementos de la esquina superior izquierda
+        try:
+            elementos_esquina = driver.find_elements(By.XPATH, "//*[position() < 20]")  # Primeros elementos
+            
+            for elemento in elementos_esquina:
+                if elemento.is_displayed():
+                    location = elemento.location
+                    # Filtrar elementos en la esquina superior izquierda
+                    if location['x'] < 600 and location['y'] < 600:
+                        texto_completo = elemento.text.strip()
+                        if texto_completo:
+                            st.info(f"📍 Elemento en esquina ({location['x']}, {location['y']}): {texto_completo[:200]}...")
+                            
+                            # PROCESAR TEXTO CON ESPACIOS ENTRE CARACTERES
+                            # El texto viene como: "V A L O R   A   P A G A R   A   C O M E R C I O   1 0 2 , 0 3 1 , 6 0 0"
+                            # Necesitamos reconstruir el texto sin espacios
+                            
+                            # Reconstruir texto eliminando espacios entre letras individuales
+                            texto_reconstruido = ""
+                            palabras = texto_completo.split()
+                            
+                            i = 0
+                            while i < len(palabras):
+                                palabra = palabras[i]
+                                # Si es una letra individual, unir con la siguiente
+                                if len(palabra) == 1 and palabra.isalpha():
+                                    palabra_completa = palabra
+                                    j = i + 1
+                                    while j < len(palabras) and len(palabras[j]) == 1 and palabras[j].isalpha():
+                                        palabra_completa += palabras[j]
+                                        j += 1
+                                    texto_reconstruido += palabra_completa + " "
+                                    i = j
+                                else:
+                                    texto_reconstruido += palabra + " "
+                                    i += 1
+                            
+                            texto_reconstruido = texto_reconstruido.strip()
+                            st.info(f"🔧 Texto reconstruido: {texto_reconstruido[:200]}...")
+                            
+                            # BUSCAR VALOR A PAGAR
+                            if not valor_a_pagar:
+                                # Patrones para valor
+                                patrones_valor = [
+                                    r'VALORAPAGARACOMERCIO[\s\$]*([\d,\.]+)',
+                                    r'VALORAPAGAR[\s\$]*([\d,\.]+)',
+                                    r'([\d,\.]+)[\s]*VALORAPAGARACOMERCIO',
+                                    r'(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)',  # Formato 102,031,600
+                                    r'(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)'   # Formato 102.031.600
+                                ]
+                                
+                                for patron in patrones_valor:
+                                    match = re.search(patron, texto_reconstruido, re.IGNORECASE)
                                     if match:
+                                        valor_texto = match.group(1)
                                         # Limpiar y convertir
-                                        valor_limpio = match.replace('.', '').replace(',', '').replace('$', '')
+                                        valor_limpio = valor_texto.replace(',', '').replace('.', '')
                                         if valor_limpio.isdigit():
                                             valor_num = int(valor_limpio)
                                             # Verificar que sea un valor razonable (> 1,000,000)
@@ -315,20 +324,25 @@ def find_accenorte_data(driver):
                                                 valor_a_pagar = valor_num
                                                 st.success(f"💰 VALOR A PAGAR ENCONTRADO: ${valor_a_pagar:,.0f}")
                                                 break
-                        
-                        elif tipo == "pasos":
-                            # Buscar formato 6.704 o 6,704 o 6704
-                            patrones_pasos = [
-                                r'\b(\d{1,3}(?:\.\d{3})+)\b',
-                                r'\b(\d{1,3}(?:,\d{3})+)\b',
-                                r'\b(\d{4,6})\b'  # Para números sin separadores
-                            ]
-                            for patron in patrones_pasos:
-                                matches = re.findall(patron, parent_text)
-                                for match in matches:
+                            
+                            # BUSCAR CANTIDAD PASOS
+                            if not cantidad_pasos:
+                                # Patrones para pasos
+                                patrones_pasos = [
+                                    r'CANTIDADPASOS[\s]*([\d,\.]+)',
+                                    r'CANTIDADPASOS[\s]*(\d{1,3}(?:,\d{3})+)',
+                                    r'CANTIDADPASOS[\s]*(\d{1,3}(?:\.\d{3})+)',
+                                    r'(\d{1,3}(?:,\d{3})+)[\s]*CANTIDADPASOS',
+                                    r'(\d{1,3}(?:\.\d{3})+)[\s]*CANTIDADPASOS',
+                                    r'\b(\d{1,3}[,\.]\d{3})\b'  # Formato 6,704 o 6.704
+                                ]
+                                
+                                for patron in patrones_pasos:
+                                    match = re.search(patron, texto_reconstruido, re.IGNORECASE)
                                     if match:
+                                        pasos_texto = match.group(1)
                                         # Limpiar y convertir
-                                        pasos_limpio = match.replace('.', '').replace(',', '')
+                                        pasos_limpio = pasos_texto.replace(',', '').replace('.', '')
                                         if pasos_limpio.isdigit():
                                             pasos_num = int(pasos_limpio)
                                             # Rango típico para pasos (1,000 - 100,000)
@@ -336,157 +350,47 @@ def find_accenorte_data(driver):
                                                 cantidad_pasos = pasos_num
                                                 st.success(f"👣 CANTIDAD PASOS ENCONTRADA: {cantidad_pasos:,}")
                                                 break
-                    
-                    except Exception as e:
-                        st.warning(f"⚠️ Estrategia contenedor padre falló: {e}")
-                    
-                    # ESTRATEGIA B: Buscar en elementos hermanos
-                    if (tipo == "valor" and not valor_a_pagar) or (tipo == "pasos" and not cantidad_pasos):
-                        try:
-                            parent = titulo_element.find_element(By.XPATH, "./..")
-                            siblings = parent.find_elements(By.XPATH, "./*")
                             
-                            for sibling in siblings:
-                                if sibling != titulo_element and sibling.is_displayed():
-                                    sibling_text = sibling.text.strip()
-                                    st.info(f"📝 Hermano: {sibling_text}")
-                                    
-                                    if tipo == "valor" and not valor_a_pagar:
-                                        # Buscar valor en elemento hermano
-                                        patrones_valor = [
-                                            r'\$?(\d{1,3}(?:\.\d{3})*(?:\.\d{2})?)',
-                                            r'\$?(\d{1,3}(?:,\d{3})*(?:,\d{2})?)'
-                                        ]
-                                        for patron in patrones_valor:
-                                            matches = re.findall(patron, sibling_text)
-                                            for match in matches:
-                                                if match:
-                                                    valor_limpio = match.replace('.', '').replace(',', '').replace('$', '')
-                                                    if valor_limpio.isdigit():
-                                                        valor_num = int(valor_limpio)
-                                                        if valor_num > 1000000:
-                                                            valor_a_pagar = valor_num
-                                                            st.success(f"💰 VALOR ENCONTRADO en hermano: ${valor_a_pagar:,.0f}")
-                                                            break
-                                    
-                                    elif tipo == "pasos" and not cantidad_pasos:
-                                        # Buscar pasos en elemento hermano
-                                        patrones_pasos = [
-                                            r'\b(\d{1,3}(?:\.\d{3})+)\b',
-                                            r'\b(\d{1,3}(?:,\d{3})+)\b',
-                                            r'\b(\d{4,6})\b'
-                                        ]
-                                        for patron in patrones_pasos:
-                                            matches = re.findall(patron, sibling_text)
-                                            for match in matches:
-                                                if match:
-                                                    pasos_limpio = match.replace('.', '').replace(',', '')
-                                                    if pasos_limpio.isdigit():
-                                                        pasos_num = int(pasos_limpio)
-                                                        if 1000 <= pasos_num <= 100000:
-                                                            cantidad_pasos = pasos_num
-                                                            st.success(f"👣 PASOS ENCONTRADOS en hermano: {cantidad_pasos:,}")
-                                                            break
-                        
-                        except Exception as e:
-                            st.warning(f"⚠️ Estrategia hermanos falló: {e}")
-            
-            except Exception as e:
-                st.warning(f"⚠️ Error buscando {titulo}: {e}")
+                            # Si ya encontramos ambos, salir del bucle
+                            if valor_a_pagar and cantidad_pasos:
+                                break
         
-        # ESTRATEGIA 2: Búsqueda directa en áreas específicas (esquina superior izquierda)
-        if not valor_a_pagar or not cantidad_pasos:
-            st.info("🔍 Realizando búsqueda directa en áreas específicas...")
-            
-            # Buscar en los primeros 500px desde la parte superior e izquierda
-            try:
-                elementos_superiores = driver.find_elements(By.XPATH, "//*[position() < 50]")  # Primeros elementos
-                
-                for elemento in elementos_superiores:
-                    if elemento.is_displayed():
-                        location = elemento.location
-                        size = elemento.size
-                        
-                        # Filtrar elementos en la esquina superior izquierda (primeros 500px)
-                        if location['x'] < 500 and location['y'] < 500:
-                            texto = elemento.text.strip()
-                            if texto:
-                                st.info(f"📍 Elemento en esquina ({location['x']}, {location['y']}): {texto}")
-                                
-                                # Buscar valor
-                                if not valor_a_pagar:
-                                    patron_valor = r'\$?(\d{1,3}(?:\.\d{3})*(?:\.\d{2})?)'
-                                    matches = re.findall(patron_valor, texto)
-                                    for match in matches:
-                                        if match:
-                                            valor_limpio = match.replace('.', '').replace(',', '').replace('$', '')
-                                            if valor_limpio.isdigit():
-                                                valor_num = int(valor_limpio)
-                                                if valor_num > 1000000:
-                                                    valor_a_pagar = valor_num
-                                                    st.success(f"💰 VALOR ENCONTRADO en esquina: ${valor_a_pagar:,.0f}")
-                                                    break
-                                
-                                # Buscar pasos
-                                if not cantidad_pasos:
-                                    patron_pasos = r'\b(\d{1,3}(?:\.\d{3})+)\b'
-                                    matches = re.findall(patron_pasos, texto)
-                                    for match in matches:
-                                        if match:
-                                            pasos_limpio = match.replace('.', '')
-                                            if pasos_limpio.isdigit():
-                                                pasos_num = int(pasos_limpio)
-                                                if 1000 <= pasos_num <= 100000:
-                                                    cantidad_pasos = pasos_num
-                                                    st.success(f"👣 PASOS ENCONTRADOS en esquina: {cantidad_pasos:,}")
-                                                    break
-                
-            except Exception as e:
-                st.warning(f"⚠️ Búsqueda por ubicación falló: {e}")
+        except Exception as e:
+            st.warning(f"⚠️ Estrategia esquina falló: {e}")
         
-        # ESTRATEGIA 3: Buscar en cards o KPI específicos
+        # ESTRATEGIA 2: Búsqueda directa por texto completo de la página
         if not valor_a_pagar or not cantidad_pasos:
-            st.info("🔍 Buscando en cards/KPIs...")
-            
             try:
-                # Buscar elementos que tengan apariencia de KPI (números grandes)
-                elementos_kpi = driver.find_elements(By.XPATH, "//*[contains(@class, 'card') or contains(@class, 'kpi') or contains(@class, 'value')]")
-                st.info(f"🔍 Elementos KPI encontrados: {len(elementos_kpi)}")
+                st.info("🔍 Realizando búsqueda en texto completo de la página...")
+                page_text = driver.page_source
                 
-                for elemento in elementos_kpi:
-                    if elemento.is_displayed():
-                        texto = elemento.text.strip()
-                        if texto:
-                            # Buscar valor
-                            if not valor_a_pagar:
-                                patron_valor = r'\$?(\d{1,3}(?:\.\d{3})*(?:\.\d{2})?)'
-                                matches = re.findall(patron_valor, texto)
-                                for match in matches:
-                                    if match:
-                                        valor_limpio = match.replace('.', '').replace(',', '').replace('$', '')
-                                        if valor_limpio.isdigit():
-                                            valor_num = int(valor_limpio)
-                                            if valor_num > 1000000:
-                                                valor_a_pagar = valor_num
-                                                st.success(f"💰 VALOR ENCONTRADO en KPI: ${valor_a_pagar:,.0f}")
-                                                break
-                            
-                            # Buscar pasos
-                            if not cantidad_pasos:
-                                patron_pasos = r'\b(\d{1,3}(?:\.\d{3})+)\b'
-                                matches = re.findall(patron_pasos, texto)
-                                for match in matches:
-                                    if match:
-                                        pasos_limpio = match.replace('.', '')
-                                        if pasos_limpio.isdigit():
-                                            pasos_num = int(pasos_limpio)
-                                            if 1000 <= pasos_num <= 100000:
-                                                cantidad_pasos = pasos_num
-                                                st.success(f"👣 PASOS ENCONTRADOS en KPI: {cantidad_pasos:,}")
-                                                break
+                # Buscar patrones específicos en el HTML completo
+                if not valor_a_pagar:
+                    # Buscar valor en el formato: 102,031,600
+                    valor_matches = re.findall(r'(\d{1,3}(?:,\d{3}){2,})', page_text)
+                    for match in valor_matches:
+                        valor_limpio = match.replace(',', '')
+                        if valor_limpio.isdigit():
+                            valor_num = int(valor_limpio)
+                            if valor_num > 1000000:
+                                valor_a_pagar = valor_num
+                                st.success(f"💰 VALOR ENCONTRADO en HTML: ${valor_a_pagar:,.0f}")
+                                break
                 
+                if not cantidad_pasos:
+                    # Buscar pasos en el formato: 6,704
+                    pasos_matches = re.findall(r'\b(\d{1,3},\d{3})\b', page_text)
+                    for match in pasos_matches:
+                        pasos_limpio = match.replace(',', '')
+                        if pasos_limpio.isdigit():
+                            pasos_num = int(pasos_limpio)
+                            if 1000 <= pasos_num <= 100000:
+                                cantidad_pasos = pasos_num
+                                st.success(f"👣 PASOS ENCONTRADOS en HTML: {cantidad_pasos:,}")
+                                break
+            
             except Exception as e:
-                st.warning(f"⚠️ Búsqueda en KPI falló: {e}")
+                st.warning(f"⚠️ Búsqueda en HTML falló: {e}")
         
         # RESULTADO FINAL
         if valor_a_pagar and cantidad_pasos:
@@ -500,9 +404,6 @@ def find_accenorte_data(driver):
             return None, cantidad_pasos
         else:
             st.error("❌ EXTRACCIÓN FALLIDA: No se encontraron valores")
-            # Tomar screenshot para debugging
-            driver.save_screenshot("error_esquina_superior_izquierda.png")
-            st.error("📸 Screenshot del área superior izquierda guardado")
             return None, None
             
     except Exception as e:
@@ -537,8 +438,8 @@ def extract_powerbi_data(fecha_objetivo):
         driver.save_screenshot("powerbi_despues_seleccion.png")
         st.info("📸 Screenshot después de selección guardado")
         
-        # 5. Buscar datos de ACCENORTE - ENFOQUE EN ESQUINA SUPERIOR IZQUIERDA
-        with st.spinner("🔍 Extrayendo datos de ACCENORTE (esquina superior izquierda)..."):
+        # 5. Buscar datos de ACCENORTE
+        with st.spinner("🔍 Extrayendo datos de ACCENORTE..."):
             valor_power_bi, pasos_power_bi = find_accenorte_data(driver)
         
         # 6. Tomar screenshot final
@@ -587,11 +488,10 @@ def main():
     - Extraer datos de ACCENORTE
     - Comparar valores y número de pasos
     
-    **Mejoras v4.2:**
-    - ✅ Búsqueda específica en esquina superior izquierda
-    - ✅ Estrategias múltiples para encontrar valores
-    - ✅ Mejor manejo de formatos numéricos
-    - ✅ Búsqueda por ubicación en pantalla
+    **Mejoras v4.3:**
+    - ✅ Manejo de texto con espacios entre caracteres
+    - ✅ Reconstrucción de texto para formato Power BI
+    - ✅ Extracción específica de VALORAPAGARACOMERCIO y CANTIDADPASOS
     """)
     
     # Cargar archivo Excel
@@ -678,7 +578,6 @@ def main():
                         
                     else:
                         st.error("❌ No se pudieron extraer los datos de Power BI")
-                        st.info("💡 Revisa los screenshots generados para debugging")
             else:
                 st.error("❌ No se pudieron extraer los valores del Excel")
     else:
@@ -688,4 +587,4 @@ if __name__ == "__main__":
     main()
     
     st.markdown("---")
-    st.markdown('<div style="text-align: center;">💻 Desarrollado por Angel Torres | 🚀 Powered by Streamlit | v4.2 - BÚSQUEDA EN ESQUINA</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align: center;">💻 Desarrollado por Angel Torres | 🚀 Powered by Streamlit | v4.3 - FORMATO ESPACIOS</div>', unsafe_allow_html=True)
